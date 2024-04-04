@@ -1,7 +1,7 @@
 package com.example.batterylevel
 
+import BatteryHostApi
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
@@ -9,42 +9,36 @@ import android.os.Build
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.MethodChannel
+
+// 生成されたインタフェースを上書きして中身を実装する
+private class BatteryLevelApi(private val context: Context) : BatteryHostApi {
+    override fun getBatteryLevel(): Long {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            // Int型からLo　ng型への変換
+            return batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toLong()
+        } else {
+            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            // intentがnullでない場合のみ計算を行う
+            intent?.let {
+                val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                return (level * 100 / scale).toLong()
+            }
+            // intentがnullの場合、適切なデフォルト値を返す
+            return -1
+        }
+    }
+}
+
 class MainActivity: FlutterActivity() {
-    private val CHANNEL = "samples.flutter.dev/battery"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
-            // This method is invoked on the main thread.
-                call, result ->
-            if (call.method == "getBatteryLevel") {
-                val batteryLevel = getBatteryLevel()
 
-                if (batteryLevel != -1) {
-                    result.success(batteryLevel)
-                } else {
-                    result.error("UNAVAILABLE", "Battery level not available.", null)
-                }
-            } else {
-                result.notImplemented()
-            }
-        }
+        val api = BatteryLevelApi(this)
+        BatteryHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, api)
     }
 
-    private fun getBatteryLevel(): Int {
-        val batteryLevel: Int
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        } else {
-            val intent = ContextWrapper(applicationContext).registerReceiver(
-                null,
-                IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            )
-            batteryLevel = intent!!.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) * 100 / intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-        }
-
-        return batteryLevel
-    }
 }
+
